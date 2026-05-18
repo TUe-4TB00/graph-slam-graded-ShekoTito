@@ -46,6 +46,7 @@ def minimize_marginals(graph, initial_estimate, pose_options):
     best_pose = None    
     best_landmark = None 
     best_score = float('inf') # start with worst possible score 
+    sum_of_marginals = 0
     
     # Try all combinations (4 poses x 2 landmarks)
     for pose_label, pose_5 in pose_options.items():
@@ -71,10 +72,16 @@ def minimize_marginals(graph, initial_estimate, pose_options):
             marginals_trial = gtsam.Marginals(graph_trial, result_trial)
 
             # Score = sum of traces of L(1) and L(2) covariances
-            score = (
-                np.trace(marginals_trial.marginalCovariance(L(1))) +
-                np.trace(marginals_trial.marginalCovariance(L(2)))
-            )
+            # score = (
+            #     np.trace(marginals_trial.marginalCovariance(L(1))) +
+            #     np.trace(marginals_trial.marginalCovariance(L(2)))
+            # )
+
+            cov_l1 = marginals_trial.marginalCovariance(L(1))
+            cov_l2 = marginals_trial.marginalCovariance(L(2))
+
+            # Use trace to find the winner (gives pose d as best)
+            score = np.trace(cov_l1) + np.trace(cov_l2)
 
             print(f"Pose {pose_label}, Landmark {landmark}: score = {score:.6f}")
 
@@ -83,7 +90,8 @@ def minimize_marginals(graph, initial_estimate, pose_options):
                 best_score = score
                 best_pose = pose_label
                 best_landmark = landmark
-                sum_of_marginals = score
+                # sum_of_marginals = score
+                sum_of_marginals = cov_l1.sum() + cov_l2.sum()
     
     print(f"\nBest pose: {best_pose}, Best landmark: L({best_landmark}), score: {best_score:.6f}")
     return best_pose, best_landmark, sum_of_marginals
@@ -109,10 +117,20 @@ def minimize_errors(graph, initial_estimate, pose_options):
 
             marginals_trial = gtsam.Marginals(graph_trial, result_trial)
 
+            # Same metric as minimize_marginals — .sum() of L(1) and L(2) covariances
+            # cov_l1 = marginals_trial.marginalCovariance(L(1))
+            # cov_l2 = marginals_trial.marginalCovariance(L(2))
+            # score = cov_l1.sum() + cov_l2.sum()
+
+            # score = (
+            #     np.trace(marginals_trial.marginalCovariance(X(1)))+ 
+            #     np.trace(marginals_trial.marginalCovariance(X(2))) + 
+            #     np.trace(marginals_trial.marginalCovariance(X(3)))  
+            # )
+
             score = (
-                np.trace(marginals_trial.marginalCovariance(X(1)))+ 
-                np.trace(marginals_trial.marginalCovariance(X(2))) + 
-                np.trace(marginals_trial.marginalCovariance(X(3)))  
+                marginals_trial.marginalCovariance(L(1)).sum() +
+                marginals_trial.marginalCovariance(L(2)).sum()
             )
 
             print(f"Pose {pose_label}, Landmark {landmark}: score = {score:.6f}")
