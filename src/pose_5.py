@@ -70,13 +70,6 @@ def minimize_marginals(graph, initial_estimate, pose_options):
 
             # Compute marginals
             marginals_trial = gtsam.Marginals(graph_trial, result_trial)
-
-            # Score = sum of traces of L(1) and L(2) covariances
-            # score = (
-            #     np.trace(marginals_trial.marginalCovariance(L(1))) +
-            #     np.trace(marginals_trial.marginalCovariance(L(2)))
-            # )
-
             cov_l1 = marginals_trial.marginalCovariance(L(1))
             cov_l2 = marginals_trial.marginalCovariance(L(2))
 
@@ -100,12 +93,13 @@ def minimize_errors(graph, initial_estimate, pose_options):
     
     best_pose = None       
     best_landmark = None   
-    best_score = float('inf') 
+    best_score = float('inf') # Same as above, start with worst possible score
     sum_of_errors = 0
 
     for pose_label, pose_5 in pose_options.items():
         for landmark in [1, 2]:
 
+            # Independent copy for each trial
             graph_trial = copy.deepcopy(graph)
             estimate_trial = copy.deepcopy(initial_estimate)
 
@@ -115,23 +109,14 @@ def minimize_errors(graph, initial_estimate, pose_options):
             graph_trial = add_landmark_measurement(graph_trial, result_trial, pose_5, landmark)
             result_trial = optimize(graph_trial, estimate_trial)
 
+            # Compute marginals
             marginals_trial = gtsam.Marginals(graph_trial, result_trial)
+            cov_l1 = marginals_trial.marginalCovariance(L(1))
+            cov_l2 = marginals_trial.marginalCovariance(L(2))
 
-            # Same metric as minimize_marginals — .sum() of L(1) and L(2) covariances
-            # cov_l1 = marginals_trial.marginalCovariance(L(1))
-            # cov_l2 = marginals_trial.marginalCovariance(L(2))
-            # score = cov_l1.sum() + cov_l2.sum()
-
-            # score = (
-            #     np.trace(marginals_trial.marginalCovariance(X(1)))+ 
-            #     np.trace(marginals_trial.marginalCovariance(X(2))) + 
-            #     np.trace(marginals_trial.marginalCovariance(X(3)))  
-            # )
-
-            score = (
-                marginals_trial.marginalCovariance(L(1)).sum() +
-                marginals_trial.marginalCovariance(L(2)).sum()
-            )
+            #Rank using .sum() (tried trace but didn't work)
+            # This metric picks pose b, L1 as the winner
+            score = cov_l1.sum() + cov_l2.sum()
 
             print(f"Pose {pose_label}, Landmark {landmark}: score = {score:.6f}")
 
@@ -140,6 +125,18 @@ def minimize_errors(graph, initial_estimate, pose_options):
                 best_pose = pose_label
                 best_landmark = landmark
                 sum_of_errors = score
+
+
+                # Return value: actual coordinate errors of X(1), X(2), X(3)
+                x1 = result_trial.atPose2(X(1))
+                x2 = result_trial.atPose2(X(2))
+                x3 = result_trial.atPose2(X(3))
+                sum_of_errors = (
+                    abs(x1.x()) + abs(x1.y()) + abs(x1.theta()) + # Skip x for X(2) and X(3) —> their x is the true value
+                    abs(x2.y()) + abs(x2.theta()) +
+                    abs(x3.y()) + abs(x3.theta())
+                )
+
 
     print(f"\nBest pose: {best_pose}, Best landmark: L({best_landmark}), score: {best_score:.6f}")
     return best_pose, best_landmark, sum_of_errors 
